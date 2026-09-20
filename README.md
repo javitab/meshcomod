@@ -185,7 +185,9 @@ Use an appropriate antenna and power supply, and configure frequency/power for l
 
 `LilyGo_TBeam_1W_companion_radio_usb_tcp` includes two mutually exclusive boot modes in one image. **Companion remains the default.** Mode selection is saved separately in NVS and takes effect after reboot; neither the partition layout nor the stored companion identity, contacts, channels and preferences is replaced.
 
-While connected normally, configure and connect Wi-Fi, then send these commands to the local **Meshcomod** contact:
+**On the radio:** configure and connect Wi-Fi, then click the user button to cycle to the **KISS TNC** page (after **WEBSOCKET**). Hold it as you would on the BLE page until **Release to reboot** appears, then release. The radio saves KISS mode and reboots automatically. If the display is asleep, wake it first. The page shows **Connect Wi-Fi first** when prerequisites are missing; a failed save does not reboot.
+
+Alternatively, send these commands to the local **Meshcomod** contact:
 
 ```text
 mode kiss-tcp
@@ -201,7 +203,7 @@ KISS starts with the companion's saved radio settings. MeshCore `SetRadio`/`SetT
 To return to companion, use any one of:
 
 - **USB serial terminal:** send `mode companion`, then `reboot`, each followed by a newline. `help` lists the recovery commands.
-- **Device:** hold the user button (GPIO17, not BOOT/GPIO0) for three seconds.
+- **Device:** the active **KISS TNC: ON** screen shows **OFF: hold 3s+release**. Hold the user button (GPIO17, not BOOT/GPIO0) until **Release to reboot** appears, then release. Returning to companion works even without Wi-Fi. Waiting for release prevents the same held button from triggering another action after reboot.
 - **KISS TCP:** send the standard Return frame `C0 FF C0` while TX is idle. It saves companion mode and reboots; a busy transmitter returns a KISS error instead.
 
 Wi-Fi and BLE preferences are not changed by mode selection. Returning to companion restores their normal behavior. Return to companion before using its OTA controls.
@@ -211,7 +213,7 @@ Wi-Fi and BLE preferences are not changed by mode selection. Returning to compan
 For an upgrade from this session's dev/dev2 image, use the **app-only `.bin` via OTA**, not `-merged.bin`; no full-flash erase or partition change is needed. Back up the identity before any firmware upgrade. Exact local build command for this iteration:
 
 ```bash
-PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev3 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
+PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev4 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
 ```
 
 Host regression checks: `.venv/bin/pio test -e native_kiss_modem -e native_radio_mode -e native_tbeam_1w_radio -e native`. Physical mode switching, RF operation and data retention across on-device OTA still require hardware acceptance.

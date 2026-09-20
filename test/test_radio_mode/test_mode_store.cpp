@@ -86,6 +86,51 @@ TEST_F(RadioModeStoreTest, InvalidModeIsNotWritten) {
   EXPECT_FALSE(mock_namespace_exists);
 }
 
+TEST_F(RadioModeStoreTest, MenuRequiresWifiBeforeSavingKissOrArmingReboot) {
+  RadioModeSwitch action;
+  const char* error;
+  EXPECT_FALSE(action.request(CompanionRadioMode::KissTcp, false, error));
+  EXPECT_STREQ(error, "Connect Wi-Fi first");
+  EXPECT_FALSE(action.pending());
+  EXPECT_FALSE(action.readyToReboot(false));
+  EXPECT_FALSE(mock_namespace_exists);
+}
+
+TEST_F(RadioModeStoreTest, MenuSavesKissAndWaitsForButtonReleaseBeforeReboot) {
+  RadioModeSwitch action;
+  const char* error;
+  EXPECT_FALSE(action.readyToReboot(false));
+  ASSERT_TRUE(action.request(CompanionRadioMode::KissTcp, true, error));
+  EXPECT_TRUE(action.pending());
+  CompanionRadioMode mode;
+  ASSERT_TRUE(radioModeLoad(mode, error));
+  EXPECT_EQ(mode, CompanionRadioMode::KissTcp);
+  EXPECT_FALSE(action.readyToReboot(true));
+  EXPECT_TRUE(action.readyToReboot(false));
+}
+
+TEST_F(RadioModeStoreTest, MenuCannotRebootAfterFailedSave) {
+  RadioModeSwitch action;
+  const char* error;
+  mock_commit_failure = true;
+  EXPECT_FALSE(action.request(CompanionRadioMode::KissTcp, true, error));
+  EXPECT_NE(error, nullptr);
+  EXPECT_FALSE(action.pending());
+  EXPECT_FALSE(action.readyToReboot(false));
+}
+
+TEST_F(RadioModeStoreTest, ReturnMenuWorksWithoutWifiAndWaitsForRelease) {
+  RadioModeSwitch action;
+  const char* error;
+  ASSERT_TRUE(radioModeSave(CompanionRadioMode::KissTcp, error));
+  ASSERT_TRUE(action.request(CompanionRadioMode::Companion, false, error));
+  EXPECT_FALSE(action.readyToReboot(true));
+  EXPECT_TRUE(action.readyToReboot(false));
+  CompanionRadioMode mode;
+  ASSERT_TRUE(radioModeLoad(mode, error));
+  EXPECT_EQ(mode, CompanionRadioMode::Companion);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

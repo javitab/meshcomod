@@ -9,7 +9,10 @@ Standard KISS TNC firmware for MeshCore LoRa radios. Compatible with any KISS cl
 ## Optional TCP Transport on T-Beam 1W
 
 The experimental `LilyGo_TBeam_1W_companion_radio_usb_tcp` image can select
-KISS instead of companion at boot. See the [mode-switching instructions](../README.md#optional-kiss-over-tcp-mode).
+KISS instead of companion at boot. The OLED's **KISS TNC** page supports
+hold-to-select, release-to-reboot without host commands; the active KISS screen
+provides hold-to-return even when Wi-Fi is unavailable.
+See the [mode-switching instructions](../README.md#optional-kiss-over-tcp-mode).
 KISS framing is sent directly over TCP port **8001**, with no companion length
 prefix, Telnet negotiation or text greeting. One client controls the radio;
 additional clients are disconnected. This is raw LoRa packet transport, not

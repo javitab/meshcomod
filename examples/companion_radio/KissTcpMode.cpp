@@ -9,13 +9,12 @@
 #include <WiFi.h>
 #include <cmath>
 
-#ifndef KISS_TCP_PORT
-#define KISS_TCP_PORT 8001
-#endif
-
 static bool s_active = false;
 static bool s_ready = false;
 static bool s_reboot = false;
+static RadioModeSwitch s_button_switch;
+static bool s_button_error = false;
+static uint32_t s_button_error_since = 0;
 static const char* s_fault = nullptr;
 static DisplayDriver* s_display = nullptr;
 static mesh::LocalIdentity s_identity;
@@ -46,6 +45,14 @@ static bool wifiUsable() {
   return WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
+bool companionModeCanUseKiss() {
+  return wifiConfigHasRuntime() && wifiConfigGetRadioEnabled() && wifiUsable();
+}
+
+bool companionModeSelect(CompanionRadioMode mode, const char*& error) {
+  return radioModeSelect(mode, companionModeCanUseKiss(), error);
+}
+
 void companionModeCommand(const char* command, char* reply, size_t size) {
   while (*command == ' ' || *command == '\t') ++command;
   size_t len = strlen(command);
@@ -66,17 +73,13 @@ void companionModeCommand(const char* command, char* reply, size_t size) {
   if (len == 14 && strncasecmp(command, "mode companion", len) == 0) {
     mode = CompanionRadioMode::Companion;
   } else if (len == 13 && strncasecmp(command, "mode kiss-tcp", len) == 0) {
-    if (!wifiConfigHasRuntime() || !wifiConfigGetRadioEnabled() || !wifiUsable()) {
-      snprintf(reply, size, "error: save Wi-Fi credentials and connect Wi-Fi before selecting kiss-tcp");
-      return;
-    }
     mode = CompanionRadioMode::KissTcp;
   } else {
     snprintf(reply, size, "error: use mode, mode companion, or mode kiss-tcp");
     return;
   }
   const char* error;
-  if (!radioModeSave(mode, error)) {
+  if (!companionModeSelect(mode, error)) {
     snprintf(reply, size, "error: %s", error);
     return;
   }
@@ -227,12 +230,21 @@ static void pollRecoveryButton() {
   static uint32_t since = 0;
   if (digitalRead(PIN_USER_BTN) != LOW) {
     held = false;
+    if (s_button_switch.readyToReboot(false)) s_reboot = true;
   } else if (!held) {
     held = true;
     since = millis();
-  } else if (millis() - since >= 3000) {
+  } else if (!s_button_switch.pending() && millis() - since >= 3000) {
     since = millis();
-    returnToCompanion();
+    const char* error;
+    if (s_button_switch.request(CompanionRadioMode::Companion, false, error)) {
+      s_button_error = false;
+      Serial.println("[kiss] companion saved; release button to reboot");
+    } else {
+      Serial.printf("[kiss] ERROR: %s\n", error);
+      s_button_error = true;
+      s_button_error_since = millis();
+    }
   }
 }
 
@@ -297,9 +309,11 @@ static void updateDisplay() {
   last_update = millis();
   s_display->startFrame();
   s_display->setTextSize(1);
-  s_display->drawTextLeftAlign(0, 0, "KISS TCP (no mesh)");
+  s_display->drawTextLeftAlign(0, 0, "KISS TNC: ON");
   char line[32];
-  if (s_fault) {
+  if (s_button_error && millis() - s_button_error_since < 3000) {
+    s_display->drawTextLeftAlign(0, 12, "Mode save failed");
+  } else if (s_fault) {
     s_display->drawTextLeftAlign(0, 12, "ERROR: see USB log");
   } else {
     snprintf(line, sizeof(line), "%s:%u", WiFi.localIP().toString().c_str(), KISS_TCP_PORT);
@@ -309,7 +323,7 @@ static void updateDisplay() {
   snprintf(line, sizeof(line), "RX %lu TX %lu", (unsigned long)radio_driver.getPacketsRecv(),
            (unsigned long)radio_driver.getPacketsSent());
   s_display->drawTextLeftAlign(0, 36, line);
-  s_display->drawTextLeftAlign(0, 50, "Hold BTN 3s: companion");
+  s_display->drawTextLeftAlign(0, 50, s_button_switch.pending() ? "Release to reboot" : "OFF: hold 3s+release");
   s_display->endFrame();
 }
 

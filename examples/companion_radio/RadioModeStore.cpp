@@ -56,4 +56,18 @@ bool radioModeSave(CompanionRadioMode mode, const char*& error) {
   }
   return true;
 }
+
+bool radioModeSelect(CompanionRadioMode mode, bool wifi_ready, const char*& error) {
+  if (mode == CompanionRadioMode::KissTcp && !wifi_ready) {
+    error = "Connect Wi-Fi first";
+    return false;
+  }
+  return radioModeSave(mode, error);
+}
+
+bool RadioModeSwitch::request(CompanionRadioMode mode, bool wifi_ready, const char*& error) {
+  if (!radioModeSelect(mode, wifi_ready, error)) return false;
+  _pending = true;
+  return true;
+}
 #endif
