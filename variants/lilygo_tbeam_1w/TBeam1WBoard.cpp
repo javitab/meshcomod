@@ -3,6 +3,14 @@
 void TBeam1WBoard::begin() {
   ESP32Board::begin();
 
+  // SD and radio share SPI; keep an inserted card deselected during radio use.
+  digitalWrite(SDCARD_CS, HIGH);
+  pinMode(SDCARD_CS, OUTPUT);
+
+  // CTRL powers the LNA, not the PA. Start in the safe idle state before LDO EN.
+  digitalWrite(SX126X_RXEN, LOW);
+  pinMode(SX126X_RXEN, OUTPUT);
+
   // Power on radio module (must be done before radio init)
   pinMode(SX126X_POWER_EN, OUTPUT);
   digitalWrite(SX126X_POWER_EN, HIGH);

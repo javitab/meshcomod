@@ -40,7 +40,7 @@ Otherwise this is the same codebase as MeshCore; we sync from upstream and add o
 
 **Env-name casing matters when building:** V4 uses lowercase `heltec_v4_…`; V3 uses a capital H `Heltec_v3_…`. Use the exact name (see [Build it yourself](#hard--build-it-yourself)).
 
-**Experimental bring-up:** the **LilyGo T-Beam 1W** (ESP32-S3, SX1262 with external PA, SH1106 OLED, L76K GPS) has a local-build multi-transport target, `LilyGo_TBeam_1W_companion_radio_usb_tcp`. It is **not yet hardware-validated or included in the shipped companion release matrix**. See [T-Beam 1W bring-up](#t-beam-1w-bring-up-experimental); this is not the original T-Beam or T-Beam Supreme.
+**Experimental bring-up:** the **LilyGo T-Beam 1W** (ESP32-S3, SX1262 with external PA, SH1106 OLED, L76K GPS) has a local-build multi-transport target, `LilyGo_TBeam_1W_companion_radio_usb_tcp`. It is **not yet fully hardware-validated or included in the shipped companion release matrix**. See [T-Beam 1W bring-up](#t-beam-1w-bring-up-experimental); this is not the original T-Beam or T-Beam Supreme.
 
 > **Touch boards** (Heltec V4 TFT, LilyGo T-Deck) are built and released from **[wadamesh](https://github.com/ALLFATHER-BV/wadamesh)**, not here.
 
@@ -158,7 +158,7 @@ Other targets use the same flow with their env name (`Heltec_Wireless_Paper_comp
 
 ### T-Beam 1W bring-up (experimental)
 
-This target reuses the upstream board's radio power/RF-switch setup, fan control, battery measurement, GPS and OLED, and adds the same Meshcomod USB + NimBLE BLE + Wi-Fi TCP/WebSocket stack as the shipped OLED companions. The existing USB-only, BLE-only and Wi-Fi-only targets are unchanged.
+This target reuses the upstream board's radio power/RF-switch setup, fan control, battery measurement, GPS and OLED, and adds the same Meshcomod USB + NimBLE BLE + Wi-Fi TCP/WebSocket stack as the shipped OLED companions. The existing USB-only, BLE-only and Wi-Fi-only transport selections are unchanged; the board-level PA ramp and startup corrections below apply to all T-Beam 1W environments.
 
 ```bash
 export FIRMWARE_VERSION=tbeam-1w-dev
@@ -179,6 +179,29 @@ Before calling this board supported, verify on real hardware:
 - Fan operation, supply stability and PA temperature during transmissions; OTA update/reboot using an image built for this exact target and partition layout.
 
 Use an appropriate antenna and power supply, and configure frequency/power for local regulations before transmitting. The external PA adds gain: the inherited `LORA_TX_POWER=22` is the SX1262 drive setting, **not a measured antenna-port output power**. RF output, thermal behavior and the inherited battery calibration still need hardware confirmation.
+
+#### LilyGo hardware requirements and reception
+
+The implementation follows [LilyGo's SX1262 board notes](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/docs/en/t_beam_1w_sx1262/t_beam_1w_sx1262.md), with GPS pin orientation checked against their [SX1262 example](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/LoRa/TBeam1W/SX1262_PingPong/SX1262_PingPong.ino):
+
+| Requirement | Firmware handling |
+|---|---|
+| GPIO40 LDO enable | High while the radio is active, low on board power-off. Do not power-cycle the entire radio between packets. |
+| DIO2 / GPIO21 RF switch | RadioLib drives GPIO21 low before TX and high before RX; the SX1262 drives DIO2 for the PA. TX is DIO2=1/CTRL=0; RX is DIO2=0/CTRL=1. Sleep/standby disables the LNA. The board starts CTRL low before enabling radio power. |
+| PA stabilization greater than 800 us | `TBeam1WRadio` reapplies **1700 us** after every output-power change, including saved preferences at startup. A one-time setting is insufficient because RadioLib resets it to 200 us. Configuration errors are logged and block TX until reconfiguration succeeds. |
+| Shared SPI bus | Radio CS=15, SCK=13, MISO=12, MOSI=11; unused SD CS=10 is held high to avoid bus contention. |
+| Other radio pins | RESET=3, DIO1=1, BUSY=38; RX boosted gain remains enabled by default (runtime preferences can override it). |
+| Display and controls | SH1106 at 0x3C, SDA=8/SCL=9, user button=17, TX LED=18; fan GPIO41 stays on during operation and off at board power-off. |
+| GPS | L76K wake=16, MCU RX=5/TX=6, matching LilyGo's executable examples. The Markdown pin table labels TX/RX differently; MeshCore's `PIN_GPS_TX` is passed as the MCU RX argument. PPS=7 is reserved. |
+| Power and reserved pins | Battery ADC=4; NTC=14 is reserved but temperature sensing is not implemented. USB CDC, 16 MB QIO flash and OPI PSRAM come from the board definition. The dual-OTA partition scheme is deliberate, rather than LilyGo's example FATFS layout. |
+
+The RF switch is managed by RadioLib, not by the LED-only `onBeforeTransmit` / `onAfterTransmit` hooks. There is no extra host-controlled PA pin to toggle: DIO2 is an SX1262 output, not an ESP32 GPIO. Finishing TX disables the transmitter; starting RX selects the LNA path.
+
+Use USB-C within **3.9-6 V**, or the specified **7.4 V battery with at least 2 A discharge capability**. The board **does not charge the battery**. Connect the correct-band antenna before powering on (firmware can advertise automatically). The 830-950 MHz and 400-520 MHz RF modules are different hardware; this target's inherited 869.618 MHz default is for the high-band module. Software tuning does not make either module suitable for the other band. LilyGo specifies a **+15 dBm maximum LNA input**: do not directly cable two radios together without appropriate attenuation. Its 32 dBm maximum output is not a calibration guarantee; even low software drive settings have external PA gain. Header pins marked as internally connected must not be repurposed.
+
+For missed-message comparisons, match frequency/BW/SF/CR, channel keys, antennas and placement; compare **LoRa packet/error counters**, not only browser chat history. Keep the receiver away from a nearby high-power transmitter to avoid overload. PA ramp correction does not prove that every missed RX packet is fixed: RF interference, power integrity, half-duplex TX time, and main-loop/transport stalls still require measurement. Do not enable the experimental threaded RX queue merely to mask an unconfirmed cause.
+
+Host regression checks: `.venv/bin/pio test -e native_tbeam_1w_radio`.
 
 ### Black screen after flashing
 
