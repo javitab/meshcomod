@@ -13,14 +13,28 @@ public:
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
-    ((CustomSX1262 *)_radio)->setFrequency(freq);
-    ((CustomSX1262 *)_radio)->setSpreadingFactor(sf);
-    ((CustomSX1262 *)_radio)->setBandwidth(bw);
-    ((CustomSX1262 *)_radio)->setCodingRate(cr);
-    updatePreamble(sf);
+    int16_t result = setParamsChecked(freq, bw, sf, cr);
+    if (result != RADIOLIB_ERR_NONE) {
+      MESH_DEBUG_PRINTLN("SX1262: setParams failed (%d)", result);
+    }
+  }
+
+  int16_t setParamsChecked(float freq, float bw, uint8_t sf, uint8_t cr) {
+    int16_t result = ((CustomSX1262 *)_radio)->setFrequency(freq);
+    if (result != RADIOLIB_ERR_NONE) return result;
+    result = ((CustomSX1262 *)_radio)->setSpreadingFactor(sf);
+    if (result != RADIOLIB_ERR_NONE) return result;
+    result = ((CustomSX1262 *)_radio)->setBandwidth(bw);
+    if (result != RADIOLIB_ERR_NONE) return result;
+    result = ((CustomSX1262 *)_radio)->setCodingRate(cr);
+    if (result != RADIOLIB_ERR_NONE) return result;
+    result = ((CustomSX1262 *)_radio)->setPreambleLength(preambleLengthForSF(sf));
+    if (result != RADIOLIB_ERR_NONE) return result;
+    _preamble_sf = sf;
     PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForSF(sf));
     ((CustomSX1262 *)_radio)->setPreambleMillis(pm.preambleMillis);
     ((CustomSX1262 *)_radio)->setMaxPayloadMillis(pm.payloadMillis);
+    return RADIOLIB_ERR_NONE;
   }
 
   bool isReceivingPacket() override { 

@@ -26,7 +26,7 @@ class DataStore {
   char _rpbuf[80];
   const char* _rp(const char* name);   // returns _root-prefixed path (name as-is when _root empty)
 
-  void loadPrefsInt(const char *filename, NodePrefs& prefs, double& node_lat, double& node_lon);
+  void loadPrefsInt(const char *filename, NodePrefs& prefs, double& node_lat, double& node_lon, bool migrate);
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   void checkAdvBlobFile();
 #endif
@@ -47,7 +47,7 @@ public:
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
   bool loadMainIdentity(mesh::LocalIdentity &identity);
   bool saveMainIdentity(const mesh::LocalIdentity &identity);
-  void loadPrefs(NodePrefs& prefs, double& node_lat, double& node_lon);
+  void loadPrefs(NodePrefs& prefs, double& node_lat, double& node_lon, bool migrate = true);
   void savePrefs(const NodePrefs& prefs, double node_lat, double node_lon);
   void loadContacts(DataStoreHost* host);
   void saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);

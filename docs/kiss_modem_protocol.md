@@ -6,6 +6,37 @@ Standard KISS TNC firmware for MeshCore LoRa radios. Compatible with any KISS cl
 
 115200 baud, 8N1, no flow control.
 
+## Optional TCP Transport on T-Beam 1W
+
+The experimental `LilyGo_TBeam_1W_companion_radio_usb_tcp` image can select
+KISS instead of companion at boot. See the [mode-switching instructions](../README.md#optional-kiss-over-tcp-mode).
+KISS framing is sent directly over TCP port **8001**, with no companion length
+prefix, Telnet negotiation or text greeting. One client controls the radio;
+additional clients are disconnected. This is raw LoRa packet transport, not
+compatibility with conventional packet-radio waveforms or RNode extensions.
+
+TCP reads handle fragmented/coalesced frames and writes are nonblocking.
+Disconnecting clears incomplete frames and queued responses, cancels queued TX
+and finishes an active transmission. A new connection starts with the default
+KISS timing and signal-report settings; it never receives a previous client's
+queued bytes. Radio frequency/BW/SF/CR/power remain at their current values
+across connections. No received-packet history is retained for absent hosts.
+A host with pending output but no write progress for 30 seconds is disconnected.
+
+On this dual-mode image only:
+
+- `GetRadio`/`GetTxPower` initially report the loaded companion settings.
+- `SetRadio`/`SetTxPower` reject invalid SX1262 settings and changes during pending
+  TX. Driver failures return an error, not an OK response. Power is signed dBm
+  in one byte, from -9 to 22 (chip drive, not amplified antenna-port power).
+- Radio changes are volatile and do not overwrite companion preferences.
+- Return (`C0 FF C0`) saves companion mode and reboots. It is rejected while
+  TX is pending; persistence errors are reported instead of rebooting.
+- USB is a text recovery console, not a second KISS/companion connection.
+
+The TCP endpoint is unauthenticated and unencrypted, including the identity's
+cryptographic operations. Restrict it to a trusted LAN.
+
 ## Frame Format
 
 Standard KISS framing per the KA9Q/K3MC specification.
@@ -48,7 +79,7 @@ Maximum unescaped frame size: 512 bytes.
 | TXtail      | `0x04` | Delay (1 byte)     | Post-TX hold time in 10ms units (default: 0)                |
 | FullDuplex  | `0x05` | Mode (1 byte)      | 0 = half duplex, nonzero = full duplex (default: 0)         |
 | SetHardware | `0x06` | Sub-command + data | MeshCore extensions (see below)                             |
-| Return      | `0xFF` | -                  | Exit KISS mode (no-op)                                      |
+| Return      | `0xFF` | -                  | No-op on standalone images; dual-mode T-Beam saves companion mode and reboots |
 
 ### TNC to Host
 

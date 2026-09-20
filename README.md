@@ -177,8 +177,44 @@ Before calling this board supported, verify on real hardware:
 - BLE pairing and reconnect, Wi-Fi credential persistence/reconnect, and simultaneous BLE + TCP + USB message exchange without resets or duplicate delivery.
 - BLE/TCP UI toggles, WebSocket connections, and LoRa RX/TX with another known-good node.
 - Fan operation, supply stability and PA temperature during transmissions; OTA update/reboot using an image built for this exact target and partition layout.
+- Companion/KISS mode changes in both directions, KISS TCP reconnects, and USB/button recovery with Wi-Fi unavailable.
 
 Use an appropriate antenna and power supply, and configure frequency/power for local regulations before transmitting. The external PA adds gain: the inherited `LORA_TX_POWER=22` is the SX1262 drive setting, **not a measured antenna-port output power**. RF output, thermal behavior and the inherited battery calibration still need hardware confirmation.
+
+#### Optional KISS-over-TCP mode
+
+`LilyGo_TBeam_1W_companion_radio_usb_tcp` includes two mutually exclusive boot modes in one image. **Companion remains the default.** Mode selection is saved separately in NVS and takes effect after reboot; neither the partition layout nor the stored companion identity, contacts, channels and preferences is replaced.
+
+While connected normally, configure and connect Wi-Fi, then send these commands to the local **Meshcomod** contact:
+
+```text
+mode kiss-tcp
+reboot
+```
+
+`mode` reports the current mode and the saved selection for the next boot. Selecting KISS requires saved Wi-Fi credentials, Wi-Fi enabled, and a current Wi-Fi connection. After reboot, connect one KISS host to **`<device-IP>:8001`**. The OLED shows the mode, address and packet counters. Port 5000, WebSocket 8765 and companion BLE/USB are not started in KISS mode; USB instead provides a small text recovery console at 115200 baud.
+
+The host receives raw LoRa packets and is responsible for the mesh/application protocol. There are no autonomous companion advertisements, routing, chat processing or history updates in this mode. This is the [MeshCore KISS protocol](docs/kiss_modem_protocol.md), not a TCP-to-companion-protocol bridge, a conventional AFSK/AX.25 radio modem, or an implementation of RNode's hardware-command protocol.
+
+KISS starts with the companion's saved radio settings. MeshCore `SetRadio`/`SetTxPower` commands change only the current KISS session's in-memory radio configuration (retained across TCP reconnects, discarded on reboot). Power remains limited to **22 dBm SX1262 drive**, and the existing PA ramp/RF switching is retained. Host output is nonblocking; a disconnected host cancels pending TX and clears partial frames, and a host stalled on output for 30 seconds is disconnected. Packets are not stored for offline hosts.
+
+To return to companion, use any one of:
+
+- **USB serial terminal:** send `mode companion`, then `reboot`, each followed by a newline. `help` lists the recovery commands.
+- **Device:** hold the user button (GPIO17, not BOOT/GPIO0) for three seconds.
+- **KISS TCP:** send the standard Return frame `C0 FF C0` while TX is idle. It saves companion mode and reboots; a busy transmitter returns a KISS error instead.
+
+Wi-Fi and BLE preferences are not changed by mode selection. Returning to companion restores their normal behavior. Return to companion before using its OTA controls.
+
+**Use KISS TCP only on a trusted LAN:** this raw TCP endpoint has no authentication or encryption. Its MeshCore extensions can transmit, reconfigure the radio and perform cryptographic operations with the existing node identity. Do not expose it to the Internet.
+
+For an upgrade from this session's dev/dev2 image, use the **app-only `.bin` via OTA**, not `-merged.bin`; no full-flash erase or partition change is needed. Back up the identity before any firmware upgrade. Exact local build command for this iteration:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev3 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
+```
+
+Host regression checks: `.venv/bin/pio test -e native_kiss_modem -e native_radio_mode -e native_tbeam_1w_radio -e native`. Physical mode switching, RF operation and data retention across on-device OTA still require hardware acceptance.
 
 #### LilyGo hardware requirements and reception
 
