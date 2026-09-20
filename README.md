@@ -40,6 +40,8 @@ Otherwise this is the same codebase as MeshCore; we sync from upstream and add o
 
 **Env-name casing matters when building:** V4 uses lowercase `heltec_v4_…`; V3 uses a capital H `Heltec_v3_…`. Use the exact name (see [Build it yourself](#hard--build-it-yourself)).
 
+**Experimental bring-up:** the **LilyGo T-Beam 1W** (ESP32-S3, SX1262 with external PA, SH1106 OLED, L76K GPS) has a local-build multi-transport target, `LilyGo_TBeam_1W_companion_radio_usb_tcp`. It is **not yet hardware-validated or included in the shipped companion release matrix**. See [T-Beam 1W bring-up](#t-beam-1w-bring-up-experimental); this is not the original T-Beam or T-Beam Supreme.
+
 > **Touch boards** (Heltec V4 TFT, LilyGo T-Deck) are built and released from **[wadamesh](https://github.com/ALLFATHER-BV/wadamesh)**, not here.
 
 <p align="left">
@@ -153,6 +155,30 @@ sh build.sh build-firmware Heltec_v3_companion_radio_usb_tcp
 Other targets use the same flow with their env name (`Heltec_Wireless_Paper_companion_radio_usb_tcp`, `Xiao_S3_WIO_companion_radio_usb_tcp`). Build all shipped companions at once with `sh build.sh build-meshcomod-companion-firmwares`.
 
 **Outputs** (every target): app-only `out/<env>-<version>-<sha>.bin` and **merged** `out/<env>-<version>-<sha>-merged.bin` (flash from `0x0`). The merged image is also at `.pio/build/<env>/firmware-merged.bin`.
+
+### T-Beam 1W bring-up (experimental)
+
+This target reuses the upstream board's radio power/RF-switch setup, fan control, battery measurement, GPS and OLED, and adds the same Meshcomod USB + NimBLE BLE + Wi-Fi TCP/WebSocket stack as the shipped OLED companions. The existing USB-only, BLE-only and Wi-Fi-only targets are unchanged.
+
+```bash
+export FIRMWARE_VERSION=tbeam-1w-dev
+export DISABLE_DEBUG=1
+# Optional: set WIFI_SSID / WIFI_PWD, or configure Wi-Fi over USB after flashing.
+bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
+```
+
+Flash `out/LilyGo_TBeam_1W_companion_radio_usb_tcp-tbeam-1w-dev-<sha>-merged.bin` at **0x0** for initial installation. This target uses the **16 MB flash partition layout with two OTA app slots**; do not install its app-only image over an unknown upstream partition layout. Back up contacts, keys and settings before changing firmware/partitions. Local development images are not published to `prebuilt/` or selected by `build-meshcomod-companion-firmwares`.
+
+Configure 2.4 GHz Wi-Fi using the [USB console commands above](#configure-wi-fi). Connect a MeshCore BLE client using the PIN shown on the Bluetooth tab (default `123456`), and a TCP client to the device's IP on port **5000**; plain WebSocket is on **8765**. Wi-Fi carries TCP/WebSocket traffic, rather than being a separate companion protocol.
+
+Before calling this board supported, verify on real hardware:
+
+- Cold boot and reboot, OLED/button operation, GPS acquisition and plausible battery readings.
+- BLE pairing and reconnect, Wi-Fi credential persistence/reconnect, and simultaneous BLE + TCP + USB message exchange without resets or duplicate delivery.
+- BLE/TCP UI toggles, WebSocket connections, and LoRa RX/TX with another known-good node.
+- Fan operation, supply stability and PA temperature during transmissions; OTA update/reboot using an image built for this exact target and partition layout.
+
+Use an appropriate antenna and power supply, and configure frequency/power for local regulations before transmitting. The external PA adds gain: the inherited `LORA_TX_POWER=22` is the SX1262 drive setting, **not a measured antenna-port output power**. RF output, thermal behavior and the inherited battery calibration still need hardware confirmation.
 
 ### Black screen after flashing
 
