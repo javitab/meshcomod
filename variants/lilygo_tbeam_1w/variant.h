@@ -8,8 +8,7 @@
 #define I2C_SCL 9
 
 // GPS - Quectel L76K
-// GNSS_TXD (IO5) = GPS transmits → MCU RX (setPins rxPin)
-// GNSS_RXD (IO6) = GPS receives → MCU TX (setPins txPin)
+// MCU RX=5, TX=6 as in LilyGo's examples; MeshCore names the pins from the GPS side.
 #define PIN_GPS_TX 5       // MCU receives from GPS TX
 #define PIN_GPS_RX 6       // MCU transmits to GPS RX
 #define PIN_GPS_PPS 7      // GPS PPS output
@@ -58,11 +57,7 @@
 // CTRL PIN (GPIO 21) controls LNA - must be HIGH during RX
 // Truth table: DIO2=1,CTRL=0 -> TX (PA on, LNA off)
 //              DIO2=0,CTRL=1 -> RX (PA off, LNA on)
-#define SX126X_DIO2_AS_RF_SWITCH
-#define SX126X_RXEN 21  // LNA enable - HIGH during RX
-
-// TCXO voltage - required for radio init
-#define SX126X_DIO3_TCXO_VOLTAGE 3.0
+// DIO2, RXEN and TCXO settings are defined once in platformio.ini.
 
 #define SX126X_MAX_POWER 22
 #endif
@@ -75,17 +70,13 @@
 #define BATTERY_PIN 4
 #define ADC_CHANNEL ADC1_GPIO4_CHANNEL
 #define BATTERY_SENSE_SAMPLES 30
-#define ADC_MULTIPLIER 3.0
+#define ADC_MULTIPLIER 3.0  // LilyGo divider: 300k upper / 150k lower resistor
 
 // NTC temperature sensor
 #define NTC_PIN 14
 
 // Fan control
 #define FAN_CTRL_PIN 41
-
-// PA Ramp Time - T-Beam 1W requires >800us stabilization (default is 200us)
-// Value 0x05 = RADIOLIB_SX126X_PA_RAMP_800U
-#define SX126X_PA_RAMP_US 0x05
 
 // Display - SH1106 OLED (128x64)
 #define USE_SH1106

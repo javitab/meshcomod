@@ -199,13 +199,15 @@ bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
   return identity_store.save("_main", identity);
 }
 
-void DataStore::loadPrefs(NodePrefs& prefs, double& node_lat, double& node_lon) {
+void DataStore::loadPrefs(NodePrefs& prefs, double& node_lat, double& node_lon, bool migrate) {
   if (_fs->exists(_rp("/new_prefs"))) {
-    loadPrefsInt("/new_prefs", prefs, node_lat, node_lon); // new filename
+    loadPrefsInt("/new_prefs", prefs, node_lat, node_lon, migrate); // new filename
   } else if (_fs->exists(_rp("/node_prefs"))) {
-    loadPrefsInt("/node_prefs", prefs, node_lat, node_lon);
-    savePrefs(prefs, node_lat, node_lon);                // save to new filename
-    _fs->remove(_rp("/node_prefs")); // remove old
+    loadPrefsInt("/node_prefs", prefs, node_lat, node_lon, migrate);
+    if (migrate) {
+      savePrefs(prefs, node_lat, node_lon);                // save to new filename
+      _fs->remove(_rp("/node_prefs")); // remove old
+    }
   }
 }
 
@@ -254,7 +256,7 @@ void load_prefs_tail_upstream(NodePrefs& p, const uint8_t* tail, size_t n) {
 
 }  // namespace
 
-void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& node_lat, double& node_lon) {
+void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& node_lat, double& node_lon, bool migrate) {
   File file = openRead(_fs, filename);
   if (file) {
     uint8_t pad[8];
@@ -293,7 +295,7 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
 
     file.close();
 
-    if (migrated_legacy) {
+    if (migrated_legacy && migrate) {
       savePrefs(_prefs, node_lat, node_lon);
     }
   }

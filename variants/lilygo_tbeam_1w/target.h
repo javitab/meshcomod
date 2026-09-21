@@ -6,6 +6,7 @@
 #include <helpers/radiolib/CustomSX1262Wrapper.h>
 #include <helpers/AutoDiscoverRTCClock.h>
 #include <helpers/sensors/EnvironmentSensorManager.h>
+#include "TBeam1WRadio.h"
 #include "TBeam1WBoard.h"
 
 #ifdef DISPLAY_CLASS
@@ -16,10 +17,10 @@
 #endif
 
 extern TBeam1WBoard board;
+extern RADIO_CLASS radio;
 extern WRAPPER_CLASS radio_driver;
 extern AutoDiscoverRTCClock rtc_clock;
 extern EnvironmentSensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
-

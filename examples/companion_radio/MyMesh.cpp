@@ -6,6 +6,7 @@
 #include <string.h>
 #include <SHA256.h>   // derive a region's flood-scope key from its #hashtag name
 #include <time.h>     // gmtime_r for the "clock" CLI command
+#include "KissTcpMode.h"
 #ifdef ESP32
 #include <esp_system.h>          // esp_restart for the "bootloader" CLI command
 #include <soc/rtc_cntl_reg.h>    // RTC_CNTL_OPTION1_REG / FORCE_DOWNLOAD_BOOT
@@ -200,6 +201,10 @@ static int s_meshcomod_scan_count = 0;
 #endif
 static const char* kMeshcomodHelpMsg =
   "help\n"
+#ifdef COMPANION_KISS_TCP
+  "mode [companion|kiss-tcp]\n"
+  "reboot\n"
+#endif
   "status\n"
   "ota start\n"
   "ota url <https://...bin>\n"
@@ -484,6 +489,15 @@ bool MyMesh::handleMeshcomodCommand(const char* text, int text_len) {
     return strncasecmp(s, name, n) == 0 && (s[n] == '\0' || s[n] == ' ' || s[n] == '\t');
   };
 
+#ifdef COMPANION_KISS_TCP
+  if (isCmd(p, "mode")) {
+    char reply[160];
+    companionModeCommand(p, reply, sizeof(reply));
+    pushMeshcomodReply(reply);
+    return true;
+  }
+#endif
+
   if (isCmd(p, "ver") || isCmd(p, "version")) {
     char r[96];
     snprintf(r, sizeof r, "Meshcomod %s\nbuild %s  (code %d)",
@@ -509,6 +523,9 @@ bool MyMesh::handleMeshcomodCommand(const char* text, int text_len) {
     return true;
   }
   if (isCmd(p, "reboot")) {
+#ifdef COMPANION_KISS_TCP
+    saveContacts();
+#endif
     pushMeshcomodReply("rebooting...");
     delay(150);
     board.reboot();

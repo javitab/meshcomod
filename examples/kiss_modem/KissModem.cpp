@@ -26,11 +26,26 @@ KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& r
 }
 
 void KissModem::begin() {
+  resetSession();
+}
+
+void KissModem::resetSession() {
+  if (_tx_state == TX_SENDING) {
+    _radio.onSendFinished();
+  }
   _rx_len = 0;
   _rx_escaped = false;
   _rx_active = false;
   _has_pending_tx = false;
+  _pending_tx_len = 0;
   _tx_state = TX_IDLE;
+  _exit_requested = false;
+  _txdelay = KISS_DEFAULT_TXDELAY;
+  _persistence = KISS_DEFAULT_PERSISTENCE;
+  _slottime = KISS_DEFAULT_SLOTTIME;
+  _txtail = 0;
+  _fullduplex = 0;
+  _signal_report_enabled = true;
   resetOutputQueue();
 }
 
@@ -200,6 +215,7 @@ void KissModem::writeHardwareError(uint8_t error_code) {
 }
 
 void KissModem::loop() {
+  if (_exit_requested) return;
   tryFlushFrames();
 
   while (_serial.available()) {
@@ -208,6 +224,7 @@ void KissModem::loop() {
     if (b == KISS_FEND) {
       if (_rx_active && _rx_len > 0) {
         processFrame();
+        if (_exit_requested) return;
       }
       _rx_len = 0;
       _rx_escaped = false;
@@ -249,7 +266,20 @@ void KissModem::processFrame() {
 
   uint8_t type_byte = _rx_buf[0];
 
-  if (type_byte == KISS_CMD_RETURN) return;
+  if (type_byte == KISS_CMD_RETURN) {
+    if (_exitCallback) {
+      if (_rx_len != 1) {
+        writeHardwareError(HW_ERR_INVALID_LENGTH);
+      } else if (isTxBusy() || _has_pending_tx) {
+        writeHardwareError(HW_ERR_TX_BUSY);
+      } else if (_exitCallback()) {
+        _exit_requested = true;
+      } else {
+        writeHardwareError(HW_ERR_INVALID_PARAM);
+      }
+    }
+    return;
+  }
 
   uint8_t port = (type_byte >> 4) & 0x0F;
   uint8_t cmd = type_byte & 0x0F;
@@ -576,17 +606,29 @@ void KissModem::handleSetRadio(const uint8_t* data, uint16_t len) {
     writeHardwareError(HW_ERR_INVALID_LENGTH);
     return;
   }
-  if (!_setRadioCallback) {
+  if (!_setRadioCallback && !_configureRadioCallback) {
     writeHardwareError(HW_ERR_NO_CALLBACK);
     return;
   }
 
-  memcpy(&_config.freq_hz, data, 4);
-  memcpy(&_config.bw_hz, data + 4, 4);
-  _config.sf = data[8];
-  _config.cr = data[9];
-
-  _setRadioCallback(_config.freq_hz / 1000000.0f, _config.bw_hz / 1000.0f, _config.sf, _config.cr);
+  RadioConfig config = _config;
+  memcpy(&config.freq_hz, data, 4);
+  memcpy(&config.bw_hz, data + 4, 4);
+  config.sf = data[8];
+  config.cr = data[9];
+  if (_configureRadioCallback) {
+    if (isTxBusy() || _has_pending_tx) {
+      writeHardwareError(HW_ERR_TX_BUSY);
+      return;
+    }
+    if (!_configureRadioCallback(config)) {
+      writeHardwareError(HW_ERR_INVALID_PARAM);
+      return;
+    }
+  } else {
+    _setRadioCallback(config.freq_hz / 1000000.0f, config.bw_hz / 1000.0f, config.sf, config.cr);
+  }
+  _config = config;
   writeHardwareFrame(HW_RESP_OK, nullptr, 0);
 }
 
@@ -595,13 +637,26 @@ void KissModem::handleSetTxPower(const uint8_t* data, uint16_t len) {
     writeHardwareError(HW_ERR_INVALID_LENGTH);
     return;
   }
-  if (!_setTxPowerCallback) {
+  if (!_setTxPowerCallback && !_configureRadioCallback) {
     writeHardwareError(HW_ERR_NO_CALLBACK);
     return;
   }
 
-  _config.tx_power = data[0];
-  _setTxPowerCallback(data[0]);
+  RadioConfig config = _config;
+  config.tx_power = data[0];
+  if (_configureRadioCallback) {
+    if (isTxBusy() || _has_pending_tx) {
+      writeHardwareError(HW_ERR_TX_BUSY);
+      return;
+    }
+    if (!_configureRadioCallback(config)) {
+      writeHardwareError(HW_ERR_INVALID_PARAM);
+      return;
+    }
+  } else {
+    _setTxPowerCallback(data[0]);
+  }
+  _config = config;
   writeHardwareFrame(HW_RESP_OK, nullptr, 0);
 }
 

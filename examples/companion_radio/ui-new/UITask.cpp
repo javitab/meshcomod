@@ -1,6 +1,7 @@
 #include "UITask.h"
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#include "../KissTcpMode.h"
 #include "target.h"
 #if defined(HAS_HELTEC_V4_CAP_TOUCH) && defined(ESP32)
   #include <helpers/input/HeltecV4CapTouch.h>
@@ -102,6 +103,9 @@ class HomeScreen : public UIScreen {
     NETWORK,
     WSS,
 #endif
+#ifdef COMPANION_KISS_TCP
+    KISS_TNC,
+#endif
 #if ENV_INCLUDE_GPS == 1
     GPS,
 #endif
@@ -121,6 +125,9 @@ class HomeScreen : public UIScreen {
   NodePrefs* _node_prefs;
   uint8_t _page;
   bool _shutdown_init;
+#ifdef COMPANION_KISS_TCP
+  RadioModeSwitch _kiss_switch;
+#endif
   AdvertPath recent[UI_RECENT_LIST_SIZE];
 
   const char* pageTitle() const {
@@ -133,6 +140,9 @@ class HomeScreen : public UIScreen {
 #ifdef MULTI_TRANSPORT_COMPANION
       case HomePage::NETWORK: return "NETWORK";
       case HomePage::WSS: return "WEBSOCKET";
+#endif
+#ifdef COMPANION_KISS_TCP
+      case HomePage::KISS_TNC: return "KISS TNC";
 #endif
 #if ENV_INCLUDE_GPS == 1
       case HomePage::GPS: return "GPS";
@@ -233,11 +243,23 @@ class HomeScreen : public UIScreen {
   }
 
 public:
+#ifdef COMPANION_KISS_TCP
+  bool isKissPage() const { return _page == HomePage::KISS_TNC; }
+  bool modeSwitchPending() const { return _kiss_switch.pending(); }
+#endif
+
   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, NodePrefs* node_prefs)
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
        _shutdown_init(false), sensors_lpp(200) {  }
 
   void poll() override {
+#ifdef COMPANION_KISS_TCP
+    if (_kiss_switch.readyToReboot(_task->isButtonPressed())) {
+      the_mesh.uiPersistContacts();
+      _task->shutdown(true);
+      return;
+    }
+#endif
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
       _task->shutdown();
     }
@@ -471,6 +493,20 @@ public:
       }
     }
 #endif
+#ifdef COMPANION_KISS_TCP
+    else if (_page == HomePage::KISS_TNC) {
+      display.setTextSize(1);
+      display.setColor(UIColor::primary_txt);
+      display.drawTextCentered(display.width() / 2, 22, "KISS TNC disabled");
+      snprintf(tmp, sizeof(tmp), "TCP Port: %u", (unsigned)KISS_TCP_PORT);
+      display.drawTextCentered(display.width() / 2, 33, tmp);
+      bool ready = companionModeCanUseKiss();
+      display.setColor(ready ? UIColor::primary_txt : UIColor::warning_txt);
+      display.drawTextCentered(display.width() / 2, 43, ready ? "Companion stops" : "Connect Wi-Fi first");
+      display.drawTextCentered(display.width() / 2, 53,
+                              _kiss_switch.pending() ? "Release to reboot" : "ON: hold + reboot");
+    }
+#endif
     else if (_page == HomePage::ADVERT) {
       display.setColor(UIColor::primary_txt);
       display.drawXbm((display.width() - 32) / 2, 18, advert_icon, 32, 32);
@@ -670,6 +706,19 @@ public:
   }
 
   bool handleInput(char c) override {
+#ifdef COMPANION_KISS_TCP
+    if (_kiss_switch.pending()) return true;
+    if (c == KEY_LONG_ENTER && isKissPage()) {
+      const char* error;
+      if (_kiss_switch.request(CompanionRadioMode::KissTcp, companionModeCanUseKiss(), error)) {
+        _task->showAlert("Release to reboot", 5000);
+      } else {
+        Serial.printf("[mode] ERROR: %s\n", error);
+        _task->showAlert(companionModeCanUseKiss() ? "Mode save failed" : "Connect Wi-Fi first", 3000);
+      }
+      return true;
+    }
+#endif
     if (c == KEY_LEFT || c == KEY_PREV) {
       _page = (_page + HomePage::Count - 1) % HomePage::Count;
       return true;
@@ -957,6 +1006,10 @@ void UITask::userLedHandler() {
 }
 
 void UITask::setCurrScreen(UIScreen* c) {
+#ifdef COMPANION_KISS_TCP
+  // An incoming message must not replace the release-to-reboot prompt.
+  if (home && curr == home && static_cast<HomeScreen*>(home)->modeSwitchPending()) return;
+#endif
   curr = c;
   _next_refresh = 100;
 }
@@ -1169,6 +1222,11 @@ char UITask::checkDisplayOn(char c) {
 }
 
 char UITask::handleLongPress(char c) {
+#ifdef COMPANION_KISS_TCP
+  if (home && curr == home && static_cast<HomeScreen*>(home)->isKissPage()) {
+    return checkDisplayOn(KEY_LONG_ENTER);
+  }
+#endif
   if (millis() - ui_started_at < 8000) {   // long press in first 8 seconds since startup -> CLI/rescue
     the_mesh.enterCLIRescue();
     return 0;   // consume event

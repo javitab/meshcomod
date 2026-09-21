@@ -49,7 +49,7 @@ class UITask : public AbstractUITask {
 #endif
 
   UIScreen* splash;
-  UIScreen* home;
+  UIScreen* home = nullptr;
   UIScreen* msg_preview;
   UIScreen* curr;
 

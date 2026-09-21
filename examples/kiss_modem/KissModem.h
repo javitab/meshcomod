@@ -97,6 +97,9 @@ struct RadioConfig {
   uint8_t tx_power;
 };
 
+typedef bool (*ConfigureRadioCallback)(const RadioConfig& config);
+typedef bool (*ExitKissCallback)();
+
 enum TxState {
   TX_IDLE,
   TX_WAIT_CLEAR,
@@ -136,6 +139,9 @@ class KissModem {
   SetTxPowerCallback _setTxPowerCallback;
   GetCurrentRssiCallback _getCurrentRssiCallback;
   GetStatsCallback _getStatsCallback;
+  ConfigureRadioCallback _configureRadioCallback = nullptr;
+  ExitKissCallback _exitCallback = nullptr;
+  bool _exit_requested = false;
 
   RadioConfig _config;
   bool _signal_report_enabled;
@@ -199,11 +205,15 @@ public:
 
   void begin();
   void loop();
+  void resetSession();
 
   void setRadioCallback(SetRadioCallback cb) { _setRadioCallback = cb; }
   void setTxPowerCallback(SetTxPowerCallback cb) { _setTxPowerCallback = cb; }
   void setGetCurrentRssiCallback(GetCurrentRssiCallback cb) { _getCurrentRssiCallback = cb; }
   void setGetStatsCallback(GetStatsCallback cb) { _getStatsCallback = cb; }
+  void setConfigureRadioCallback(ConfigureRadioCallback cb) { _configureRadioCallback = cb; }
+  void setExitCallback(ExitKissCallback cb) { _exitCallback = cb; }
+  void setInitialRadioConfig(const RadioConfig& config) { _config = config; }
 
   void onPacketReceived(int8_t snr, int8_t rssi, const uint8_t* packet, uint16_t len);
   bool isTxBusy() const { return _tx_state != TX_IDLE; }

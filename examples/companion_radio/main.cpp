@@ -1,6 +1,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include "MyMesh.h"
+#include "KissTcpMode.h"
 #if defined(ESP32_PLATFORM) && defined(HAS_TOUCH_UI)
 #include <Preferences.h>
 #include <esp_system.h>
@@ -291,6 +292,20 @@ void setup() {
 
   fast_rng.begin(radio_driver.getRngSeed());
 
+#ifdef COMPANION_KISS_TCP
+  if (companionModeBegin()) {
+    kissTcpBegin(store, *the_mesh.getNodePrefs(), fast_rng,
+#ifdef DISPLAY_CLASS
+                 disp
+#else
+                 nullptr
+#endif
+    );
+    board.onBootComplete();
+    return;
+  }
+#endif
+
 #if defined(ESP32_PLATFORM) && defined(HAS_TOUCH_UI)
   {
     Preferences prefs;
@@ -568,6 +583,12 @@ void setup() {
 }
 
 void loop() {
+#ifdef COMPANION_KISS_TCP
+  if (kissTcpIsActive()) {
+    kissTcpLoop();
+    return;
+  }
+#endif
   // Run UI first every iteration so splash can dismiss at 3s even if mesh/serial blocks later (was stuck on version screen when the_mesh.loop() ran before ui_task.loop()).
 #ifdef DISPLAY_CLASS
   ui_task.loop();

@@ -40,6 +40,8 @@ Otherwise this is the same codebase as MeshCore; we sync from upstream and add o
 
 **Env-name casing matters when building:** V4 uses lowercase `heltec_v4_…`; V3 uses a capital H `Heltec_v3_…`. Use the exact name (see [Build it yourself](#hard--build-it-yourself)).
 
+**Experimental bring-up:** the **LilyGo T-Beam 1W** (ESP32-S3, SX1262 with external PA, SH1106 OLED, L76K GPS) has a local-build multi-transport target, `LilyGo_TBeam_1W_companion_radio_usb_tcp`. It is **not yet fully hardware-validated or included in the shipped companion release matrix**. See [T-Beam 1W bring-up](#t-beam-1w-bring-up-experimental); this is not the original T-Beam or T-Beam Supreme.
+
 > **Touch boards** (Heltec V4 TFT, LilyGo T-Deck) are built and released from **[wadamesh](https://github.com/ALLFATHER-BV/wadamesh)**, not here.
 
 <p align="left">
@@ -153,6 +155,91 @@ sh build.sh build-firmware Heltec_v3_companion_radio_usb_tcp
 Other targets use the same flow with their env name (`Heltec_Wireless_Paper_companion_radio_usb_tcp`, `Xiao_S3_WIO_companion_radio_usb_tcp`). Build all shipped companions at once with `sh build.sh build-meshcomod-companion-firmwares`.
 
 **Outputs** (every target): app-only `out/<env>-<version>-<sha>.bin` and **merged** `out/<env>-<version>-<sha>-merged.bin` (flash from `0x0`). The merged image is also at `.pio/build/<env>/firmware-merged.bin`.
+
+### T-Beam 1W bring-up (experimental)
+
+This target reuses the upstream board's radio power/RF-switch setup, fan control, battery measurement, GPS and OLED, and adds the same Meshcomod USB + NimBLE BLE + Wi-Fi TCP/WebSocket stack as the shipped OLED companions. The existing USB-only, BLE-only and Wi-Fi-only transport selections are unchanged; the board-level PA ramp and startup corrections below apply to all T-Beam 1W environments.
+
+```bash
+export FIRMWARE_VERSION=tbeam-1w-dev
+export DISABLE_DEBUG=1
+# Optional: set WIFI_SSID / WIFI_PWD, or configure Wi-Fi over USB after flashing.
+bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
+```
+
+Flash `out/LilyGo_TBeam_1W_companion_radio_usb_tcp-tbeam-1w-dev-<sha>-merged.bin` at **0x0** for initial installation. This target uses the **16 MB flash partition layout with two OTA app slots**; do not install its app-only image over an unknown upstream partition layout. Back up contacts, keys and settings before changing firmware/partitions. Local development images are not published to `prebuilt/` or selected by `build-meshcomod-companion-firmwares`.
+
+Configure 2.4 GHz Wi-Fi using the [USB console commands above](#configure-wi-fi). Connect a MeshCore BLE client using the PIN shown on the Bluetooth tab (default `123456`), and a TCP client to the device's IP on port **5000**; plain WebSocket is on **8765**. Wi-Fi carries TCP/WebSocket traffic, rather than being a separate companion protocol.
+
+Before calling this board supported, verify on real hardware:
+
+- Cold boot and reboot, OLED/button operation, GPS acquisition and plausible battery readings.
+- BLE pairing and reconnect, Wi-Fi credential persistence/reconnect, and simultaneous BLE + TCP + USB message exchange without resets or duplicate delivery.
+- BLE/TCP UI toggles, WebSocket connections, and LoRa RX/TX with another known-good node.
+- Fan operation, supply stability and PA temperature during transmissions; OTA update/reboot using an image built for this exact target and partition layout.
+- Companion/KISS mode changes in both directions, KISS TCP reconnects, and USB/button recovery with Wi-Fi unavailable.
+
+Use an appropriate antenna and power supply, and configure frequency/power for local regulations before transmitting. The external PA adds gain: the inherited `LORA_TX_POWER=22` is the SX1262 drive setting, **not a measured antenna-port output power**. RF output, thermal behavior and the inherited battery calibration still need hardware confirmation.
+
+#### Optional KISS-over-TCP mode
+
+`LilyGo_TBeam_1W_companion_radio_usb_tcp` includes two mutually exclusive boot modes in one image. **Companion remains the default.** Mode selection is saved separately in NVS and takes effect after reboot; neither the partition layout nor the stored companion identity, contacts, channels and preferences is replaced.
+
+**On the radio:** configure and connect Wi-Fi, then click the user button to cycle to the **KISS TNC** page (after **WEBSOCKET**). Hold it as you would on the BLE page until **Release to reboot** appears, then release. The radio saves KISS mode and reboots automatically. If the display is asleep, wake it first. The page shows **Connect Wi-Fi first** when prerequisites are missing; a failed save does not reboot.
+
+Alternatively, send these commands to the local **Meshcomod** contact:
+
+```text
+mode kiss-tcp
+reboot
+```
+
+`mode` reports the current mode and the saved selection for the next boot. Selecting KISS requires saved Wi-Fi credentials, Wi-Fi enabled, and a current Wi-Fi connection. After reboot, connect one KISS host to **`<device-IP>:8001`**. The OLED shows the mode, address and packet counters, with battery voltage (for example, `7.40V`) in the upper-right corner, refreshed once per second without disconnecting the host. This uses the same board ADC reading as KISS GetBattery and companion telemetry. From dev6, battery measurement averages eight ESP32-calibrated millivolt readings at 11 dB attenuation and applies LilyGo's 3:1 divider (300k/150k), instead of assuming a linear 3.3V ADC range. No fixed voltage offset or battery percentage is inferred. Absolute accuracy still needs comparison against a meter at the powered board's battery input. Port 5000, WebSocket 8765 and companion BLE/USB are not started in KISS mode; USB instead provides a small text recovery console at 115200 baud.
+
+The host receives raw LoRa packets and is responsible for the mesh/application protocol. There are no autonomous companion advertisements, routing, chat processing or history updates in this mode. This is the [MeshCore KISS protocol](docs/kiss_modem_protocol.md), not a TCP-to-companion-protocol bridge, a conventional AFSK/AX.25 radio modem, or an implementation of RNode's hardware-command protocol.
+
+KISS starts with the companion's saved radio settings. MeshCore `SetRadio`/`SetTxPower` commands change only the current KISS session's in-memory radio configuration (retained across TCP reconnects, discarded on reboot). Power remains limited to **22 dBm SX1262 drive**, and the existing PA ramp/RF switching is retained. Host output is nonblocking; a disconnected host cancels pending TX and clears partial frames, and a host stalled on output for 30 seconds is disconnected. Packets are not stored for offline hosts.
+
+To return to companion, use any one of:
+
+- **USB serial terminal:** send `mode companion`, then `reboot`, each followed by a newline. `help` lists the recovery commands.
+- **Device:** the active **KISS TNC: ON** screen shows **OFF: hold 3s+release**. Hold the user button (GPIO17, not BOOT/GPIO0) until **Release to reboot** appears, then release. Returning to companion works even without Wi-Fi. Waiting for release prevents the same held button from triggering another action after reboot.
+- **KISS TCP:** send the standard Return frame `C0 FF C0` while TX is idle. It saves companion mode and reboots; a busy transmitter returns a KISS error instead.
+
+Wi-Fi and BLE preferences are not changed by mode selection. Returning to companion restores their normal behavior. Return to companion before using its OTA controls.
+
+**Use KISS TCP only on a trusted LAN:** this raw TCP endpoint has no authentication or encryption. Its MeshCore extensions can transmit, reconfigure the radio and perform cryptographic operations with the existing node identity. Do not expose it to the Internet.
+
+For an upgrade from this session's dev/dev2 image, use the **app-only `.bin` via OTA**, not `-merged.bin`; no full-flash erase or partition change is needed. Back up the identity before any firmware upgrade. Exact local build command for this iteration:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev6 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
+```
+
+Host regression checks: `.venv/bin/pio test -e native_kiss_modem -e native_radio_mode -e native_tbeam_1w_radio -e native`. Physical mode switching, RF operation and data retention across on-device OTA still require hardware acceptance.
+
+#### LilyGo hardware requirements and reception
+
+The implementation follows [LilyGo's SX1262 board notes](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/docs/en/t_beam_1w_sx1262/t_beam_1w_sx1262.md), with GPS pin orientation checked against their [SX1262 example](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/LoRa/TBeam1W/SX1262_PingPong/SX1262_PingPong.ino):
+
+| Requirement | Firmware handling |
+|---|---|
+| GPIO40 LDO enable | High while the radio is active, low on board power-off. Do not power-cycle the entire radio between packets. |
+| DIO2 / GPIO21 RF switch | RadioLib drives GPIO21 low before TX and high before RX; the SX1262 drives DIO2 for the PA. TX is DIO2=1/CTRL=0; RX is DIO2=0/CTRL=1. Sleep/standby disables the LNA. The board starts CTRL low before enabling radio power. |
+| PA stabilization greater than 800 us | `TBeam1WRadio` reapplies **1700 us** after every output-power change, including saved preferences at startup. A one-time setting is insufficient because RadioLib resets it to 200 us. Configuration errors are logged and block TX until reconfiguration succeeds. |
+| Shared SPI bus | Radio CS=15, SCK=13, MISO=12, MOSI=11; unused SD CS=10 is held high to avoid bus contention. |
+| Other radio pins | RESET=3, DIO1=1, BUSY=38; RX boosted gain remains enabled by default (runtime preferences can override it). |
+| Display and controls | SH1106 at 0x3C, SDA=8/SCL=9, user button=17, TX LED=18; fan GPIO41 stays on during operation and off at board power-off. |
+| GPS | L76K wake=16, MCU RX=5/TX=6, matching LilyGo's executable examples. The Markdown pin table labels TX/RX differently; MeshCore's `PIN_GPS_TX` is passed as the MCU RX argument. PPS=7 is reserved. |
+| Power and reserved pins | Battery ADC=4; NTC=14 is reserved but temperature sensing is not implemented. USB CDC, 16 MB QIO flash and OPI PSRAM come from the board definition. The dual-OTA partition scheme is deliberate, rather than LilyGo's example FATFS layout. |
+
+The RF switch is managed by RadioLib, not by the LED-only `onBeforeTransmit` / `onAfterTransmit` hooks. There is no extra host-controlled PA pin to toggle: DIO2 is an SX1262 output, not an ESP32 GPIO. Finishing TX disables the transmitter; starting RX selects the LNA path.
+
+Use USB-C within **3.9-6 V**, or the specified **7.4 V battery with at least 2 A discharge capability**. The board **does not charge the battery**. Connect the correct-band antenna before powering on (firmware can advertise automatically). The 830-950 MHz and 400-520 MHz RF modules are different hardware; this target's inherited 869.618 MHz default is for the high-band module. Software tuning does not make either module suitable for the other band. LilyGo specifies a **+15 dBm maximum LNA input**: do not directly cable two radios together without appropriate attenuation. Its 32 dBm maximum output is not a calibration guarantee; even low software drive settings have external PA gain. Header pins marked as internally connected must not be repurposed.
+
+For missed-message comparisons, match frequency/BW/SF/CR, channel keys, antennas and placement; compare **LoRa packet/error counters**, not only browser chat history. Keep the receiver away from a nearby high-power transmitter to avoid overload. PA ramp correction does not prove that every missed RX packet is fixed: RF interference, power integrity, half-duplex TX time, and main-loop/transport stalls still require measurement. Do not enable the experimental threaded RX queue merely to mask an unconfirmed cause.
+
+Host regression checks: `.venv/bin/pio test -e native_tbeam_1w_radio`.
 
 ### Black screen after flashing
 
