@@ -3,6 +3,9 @@
 void TBeam1WBoard::begin() {
   ESP32Board::begin();
 
+  // The 3:1 divider puts an 8.4V battery at 2.8V on the ADC input.
+  analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+
   // SD and radio share SPI; keep an inserted card deselected during radio use.
   digitalWrite(SDCARD_CS, HIGH);
   pinMode(SDCARD_CS, OUTPUT);
@@ -38,17 +41,12 @@ void TBeam1WBoard::onAfterTransmit() {
 }
 
 uint16_t TBeam1WBoard::getBattMilliVolts() {
-  // T-Beam 1W uses 7.4V battery with voltage divider
-  // ADC reads through divider - adjust multiplier based on actual divider ratio
   analogReadResolution(12);
-  uint32_t raw = 0;
+  uint32_t millivolts = 0;
   for (int i = 0; i < 8; i++) {
-    raw += analogRead(BATTERY_PIN);
+    millivolts += analogReadMilliVolts(BATTERY_PIN);
   }
-  raw = raw / 8;
-  // Assuming voltage divider ratio from ADC_MULTIPLIER
-  // 3.3V reference, 12-bit ADC (4095 max)
-  return static_cast<uint16_t>((raw * 3300 * ADC_MULTIPLIER) / 4095);
+  return static_cast<uint16_t>((millivolts * ADC_MULTIPLIER) / 8);
 }
 
 const char* TBeam1WBoard::getManufacturerName() const {

@@ -70,7 +70,7 @@
 #define BATTERY_PIN 4
 #define ADC_CHANNEL ADC1_GPIO4_CHANNEL
 #define BATTERY_SENSE_SAMPLES 30
-#define ADC_MULTIPLIER 3.0
+#define ADC_MULTIPLIER 3.0  // LilyGo divider: 300k upper / 150k lower resistor
 
 // NTC temperature sensor
 #define NTC_PIN 14

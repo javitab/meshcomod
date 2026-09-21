@@ -194,7 +194,7 @@ mode kiss-tcp
 reboot
 ```
 
-`mode` reports the current mode and the saved selection for the next boot. Selecting KISS requires saved Wi-Fi credentials, Wi-Fi enabled, and a current Wi-Fi connection. After reboot, connect one KISS host to **`<device-IP>:8001`**. The OLED shows the mode, address and packet counters, with battery voltage (for example, `7.40V`) in the upper-right corner, refreshed once per second without disconnecting the host. This uses the same board ADC reading as KISS GetBattery; calibration is not yet hardware-verified, and no battery percentage is inferred. Port 5000, WebSocket 8765 and companion BLE/USB are not started in KISS mode; USB instead provides a small text recovery console at 115200 baud.
+`mode` reports the current mode and the saved selection for the next boot. Selecting KISS requires saved Wi-Fi credentials, Wi-Fi enabled, and a current Wi-Fi connection. After reboot, connect one KISS host to **`<device-IP>:8001`**. The OLED shows the mode, address and packet counters, with battery voltage (for example, `7.40V`) in the upper-right corner, refreshed once per second without disconnecting the host. This uses the same board ADC reading as KISS GetBattery and companion telemetry. From dev6, battery measurement averages eight ESP32-calibrated millivolt readings at 11 dB attenuation and applies LilyGo's 3:1 divider (300k/150k), instead of assuming a linear 3.3V ADC range. No fixed voltage offset or battery percentage is inferred. Absolute accuracy still needs comparison against a meter at the powered board's battery input. Port 5000, WebSocket 8765 and companion BLE/USB are not started in KISS mode; USB instead provides a small text recovery console at 115200 baud.
 
 The host receives raw LoRa packets and is responsible for the mesh/application protocol. There are no autonomous companion advertisements, routing, chat processing or history updates in this mode. This is the [MeshCore KISS protocol](docs/kiss_modem_protocol.md), not a TCP-to-companion-protocol bridge, a conventional AFSK/AX.25 radio modem, or an implementation of RNode's hardware-command protocol.
 
@@ -213,7 +213,7 @@ Wi-Fi and BLE preferences are not changed by mode selection. Returning to compan
 For an upgrade from this session's dev/dev2 image, use the **app-only `.bin` via OTA**, not `-merged.bin`; no full-flash erase or partition change is needed. Back up the identity before any firmware upgrade. Exact local build command for this iteration:
 
 ```bash
-PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev5 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
+PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev6 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
 ```
 
 Host regression checks: `.venv/bin/pio test -e native_kiss_modem -e native_radio_mode -e native_tbeam_1w_radio -e native`. Physical mode switching, RF operation and data retention across on-device OTA still require hardware acceptance.
