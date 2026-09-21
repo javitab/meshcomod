@@ -311,6 +311,9 @@ static void updateDisplay() {
   s_display->setTextSize(1);
   s_display->drawTextLeftAlign(0, 0, "KISS TNC: ON");
   char line[32];
+  const unsigned battery_mv = board.getBattMilliVolts();
+  snprintf(line, sizeof(line), "%u.%02uV", battery_mv / 1000, (battery_mv % 1000) / 10);
+  s_display->drawTextRightAlign(s_display->width() - 1, 0, line);
   if (s_button_error && millis() - s_button_error_since < 3000) {
     s_display->drawTextLeftAlign(0, 12, "Mode save failed");
   } else if (s_fault) {
