@@ -213,7 +213,7 @@ Wi-Fi and BLE preferences are not changed by mode selection. Returning to compan
 For an upgrade from this session's dev/dev2 image, use the **app-only `.bin` via OTA**, not `-merged.bin`; no full-flash erase or partition change is needed. Back up the identity before any firmware upgrade. Exact local build command for this iteration:
 
 ```bash
-PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev6 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
+PATH="$PWD/.venv/bin:$PATH" FIRMWARE_VERSION=tbeam-1w-dev7 DISABLE_DEBUG=1 bash build.sh build-firmware LilyGo_TBeam_1W_companion_radio_usb_tcp
 ```
 
 Host regression checks: `.venv/bin/pio test -e native_kiss_modem -e native_radio_mode -e native_tbeam_1w_radio -e native`. Physical mode switching, RF operation and data retention across on-device OTA still require hardware acceptance.
@@ -229,9 +229,13 @@ The implementation follows [LilyGo's SX1262 board notes](https://github.com/Xiny
 | PA stabilization greater than 800 us | `TBeam1WRadio` reapplies **1700 us** after every output-power change, including saved preferences at startup. A one-time setting is insufficient because RadioLib resets it to 200 us. Configuration errors are logged and block TX until reconfiguration succeeds. |
 | Shared SPI bus | Radio CS=15, SCK=13, MISO=12, MOSI=11; unused SD CS=10 is held high to avoid bus contention. |
 | Other radio pins | RESET=3, DIO1=1, BUSY=38; RX boosted gain remains enabled by default (runtime preferences can override it). |
-| Display and controls | SH1106 at 0x3C, SDA=8/SCL=9, user button=17, TX LED=18; fan GPIO41 stays on during operation and off at board power-off. |
+| Display and controls | SH1106 at 0x3C, SDA=8/SCL=9, user button=17, TX LED=18; fan GPIO41 is temperature-controlled from dev7 and off at board power-off. |
 | GPS | L76K wake=16, MCU RX=5/TX=6, matching LilyGo's executable examples. The Markdown pin table labels TX/RX differently; MeshCore's `PIN_GPS_TX` is passed as the MCU RX argument. PPS=7 is reserved. |
-| Power and reserved pins | Battery ADC=4; NTC=14 is reserved but temperature sensing is not implemented. USB CDC, 16 MB QIO flash and OPI PSRAM come from the board definition. The dual-OTA partition scheme is deliberate, rather than LilyGo's example FATFS layout. |
+| Power and reserved pins | Battery ADC=4; NTC temperature input=14. USB CDC, 16 MB QIO flash and OPI PSRAM come from the board definition. The dual-OTA partition scheme is deliberate, rather than LilyGo's example FATFS layout. |
+
+**Temperature-controlled fan (dev7):** a board-level background task samples the GPIO14 NTC approximately once per second, independently of companion/KISS loops and OTA handling. It uses LilyGo's factory-example thermistor model (10k at 25 C, beta 3950, 10k divider resistor, 3.3V supply), averaging eight calibrated ADC2 readings. The fan turns **on at 45 C** and **off below 40 C**, retaining its state between those thresholds. These are experimental tuning thresholds, not manufacturer-certified thermal limits. They apply to all T-Beam 1W environments.
+
+The fan starts **on** and remains on until a valid reading below 40 C is obtained. ADC errors (including Wi-Fi/ADC2 contention), near-rail readings, unavailable ADC calibration, or failure to start the monitor leave/turn the fan on and log an error. Read errors are retried on the next sample; recovery and fan-state changes are logged as `[fan] NTC ...`. Board power-off prevents the monitor from re-enabling the fan. This reads the board thermistor, not MCU die temperature; it does not replace existing MCU-temperature telemetry. Thermistor accuracy, sensor placement and cooling under sustained TX still need physical validation. A plausible but incorrect sensor reading or a mechanically failed fan cannot be detected by this software.
 
 The RF switch is managed by RadioLib, not by the LED-only `onBeforeTransmit` / `onAfterTransmit` hooks. There is no extra host-controlled PA pin to toggle: DIO2 is an SX1262 output, not an ESP32 GPIO. Finishing TX disables the transmitter; starting RX selects the LNA path.
 

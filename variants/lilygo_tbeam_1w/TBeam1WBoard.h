@@ -19,6 +19,12 @@
 class TBeam1WBoard : public ESP32Board {
 private:
   bool radio_powered = false;
+  portMUX_TYPE fan_mux = portMUX_INITIALIZER_UNLOCKED;
+  bool fan_shutdown = false;
+
+  static void fanTask(void* context);
+  void monitorFan();
+  bool applyFanState(bool enabled);
 
 public:
   void begin();
@@ -28,7 +34,5 @@ public:
   const char* getManufacturerName() const override;
   void powerOff() override;
 
-  // Fan control methods
-  void setFanEnabled(bool enabled);
   bool isFanEnabled() const;
 };
