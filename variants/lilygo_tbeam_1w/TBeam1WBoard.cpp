@@ -71,16 +71,22 @@ void TBeam1WBoard::powerOff() {
   digitalWrite(LED_PIN, LOW);
   portENTER_CRITICAL(&fan_mux);
   fan_shutdown = true;
+  ntc_temperature = NAN;
   digitalWrite(FAN_CTRL_PIN, LOW);
   portEXIT_CRITICAL(&fan_mux);
 
   ESP32Board::powerOff();
 }
 
-bool TBeam1WBoard::applyFanState(bool enabled) {
+bool TBeam1WBoard::applyFanState(bool enabled, float temperature) {
+  const uint32_t sample_time = millis();
   portENTER_CRITICAL(&fan_mux);
   const bool active = !fan_shutdown;
-  if (active) digitalWrite(FAN_CTRL_PIN, enabled ? HIGH : LOW);
+  if (active) {
+    digitalWrite(FAN_CTRL_PIN, enabled ? HIGH : LOW);
+    ntc_temperature = temperature;
+    ntc_sample_time = sample_time;
+  }
   portEXIT_CRITICAL(&fan_mux);
   return active;
 }
@@ -132,7 +138,7 @@ void TBeam1WBoard::monitorFan() {
     const float temperature = error == ESP_OK ? tbeam1w::ntcTemperatureC(sum_mv / 8) : NAN;
     const bool valid = std::isfinite(temperature);
     const bool enabled = control.update(temperature);
-    if (!applyFanState(enabled)) return;
+    if (!applyFanState(enabled, temperature)) return;
     if (first || valid != previous_valid || enabled != previous_enabled) {
       if (valid) {
         Serial.printf("[fan] NTC %.1f C; fan %s\n", temperature, enabled ? "ON" : "OFF");
@@ -149,4 +155,12 @@ void TBeam1WBoard::monitorFan() {
 
 bool TBeam1WBoard::isFanEnabled() const {
   return digitalRead(FAN_CTRL_PIN) == HIGH;
+}
+
+float TBeam1WBoard::getNTCTemperature() {
+  portENTER_CRITICAL(&fan_mux);
+  const float temperature = ntc_temperature;
+  const uint32_t sample_time = ntc_sample_time;
+  portEXIT_CRITICAL(&fan_mux);
+  return millis() - sample_time < 3000 ? temperature : NAN;
 }

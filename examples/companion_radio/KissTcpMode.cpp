@@ -323,6 +323,15 @@ static void updateDisplay() {
     s_display->drawTextLeftAlign(0, 12, wifiUsable() ? line : "Wi-Fi connecting...");
   }
   s_display->drawTextLeftAlign(0, 24, s_client.connected() ? "Host connected" : "No host");
+#ifdef TBEAM_1W
+  const float temperature = board.getNTCTemperature();
+  if (std::isfinite(temperature)) {
+    snprintf(line, sizeof(line), "%.1fC", temperature);
+  } else {
+    snprintf(line, sizeof(line), "--.-C");
+  }
+  s_display->drawTextRightAlign(s_display->width() - 1, 24, line);
+#endif
   snprintf(line, sizeof(line), "RX %lu TX %lu", (unsigned long)radio_driver.getPacketsRecv(),
            (unsigned long)radio_driver.getPacketsSent());
   s_display->drawTextLeftAlign(0, 36, line);

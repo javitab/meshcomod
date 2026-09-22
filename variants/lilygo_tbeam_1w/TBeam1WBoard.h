@@ -21,10 +21,12 @@ private:
   bool radio_powered = false;
   portMUX_TYPE fan_mux = portMUX_INITIALIZER_UNLOCKED;
   bool fan_shutdown = false;
+  float ntc_temperature = NAN;
+  uint32_t ntc_sample_time = 0;
 
   static void fanTask(void* context);
   void monitorFan();
-  bool applyFanState(bool enabled);
+  bool applyFanState(bool enabled, float temperature);
 
 public:
   void begin();
@@ -35,4 +37,5 @@ public:
   void powerOff() override;
 
   bool isFanEnabled() const;
+  float getNTCTemperature();
 };
